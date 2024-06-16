@@ -1,0 +1,552 @@
+Programming Assessment 
+
+Project Management System
+
+**Objective**: To evaluate the ability to manage projects, tasks, timelines, and team collaboration.
+
+>>>>>>>>>>>>>>**Requirements**:
+
+- **Backend**: Design a database schema for a project management system with tables for projects, tasks, teams, and timelines.
+
+- **API**: Develop RESTful APIs to manage projects, assign tasks, and track progress.
+
+- **Frontend**: Build a web interface for project managers and team members to collaborate on projects.
+
+- **Functionalities**:
+  - Create, update, delete, and view projects and tasks.
+  - Assign tasks to team members and set deadlines.
+  - Track project progress with Gantt charts or Kanban boards.
+  - Implement notifications and reminders for upcoming deadlines and task updates.
+
+
+
+
+------------------------------------------------------------------------------------------------------------------------------------
+[-- **Backend**: Design a database schema for a project management system with tables for projects, tasks, teams, and timelines.]
+
+--Projects Table
+
+CREATE TABLE projects (
+    project_id INT AUTO_INCREMENT PRIMARY KEY,
+    project_name VARCHAR(255) NOT NULL,
+    project_description TEXT,
+    start_date DATE,
+    end_date DATE,
+    status VARCHAR(50)
+);
+
+--Tasks Table
+
+CREATE TABLE tasks (
+    task_id INT AUTO_INCREMENT PRIMARY KEY,
+    project_id INT,
+    task_name VARCHAR(255) NOT NULL,
+    task_description TEXT,
+    start_date DATE,
+    end_date DATE,
+    status VARCHAR(50),
+    FOREIGN KEY (project_id) REFERENCES projects(project_id)
+);
+
+--Teams Table
+
+CREATE TABLE teams (
+    team_id INT AUTO_INCREMENT PRIMARY KEY,
+    team_name VARCHAR(255) NOT NULL,
+    team_description TEXT
+);
+
+--Team Members Table
+
+CREATE TABLE team_members (
+    team_id INT,
+    user_id INT,  -- Foreign key reference to Users table (not shown)
+    PRIMARY KEY (team_id, user_id),
+    FOREIGN KEY (team_id) REFERENCES teams(team_id)
+    -- Foreign key to Users table will be added when implementing user details
+);
+
+--Timelines Table
+
+CREATE TABLE timelines (
+    timeline_id INT AUTO_INCREMENT PRIMARY KEY,
+    project_id INT,
+    start_date DATE,
+    end_date DATE,
+    milestone VARCHAR(255),
+    FOREIGN KEY (project_id) REFERENCES projects(project_id)
+);
+
+---------------------------------------------------------------------------------------------------------------------------------------
+
+[-- **API**: Develop RESTful APIs to manage projects, assign tasks, and track progress.]
+
+JDBC Configuration
+First, configure your JDBC connection. Here's an example using DataSource and JdbcTemplate from Spring JDBC:
+
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+
+import javax.sql.DataSource;
+
+public class DatabaseConfig {
+
+    public static DataSource getDataSource() {
+        DriverManagerDataSource dataSource = new DriverManagerDataSource();
+        dataSource.setDriverClassName("com.mysql.jdbc.Driver");
+        dataSource.setUrl("jdbc:mysql://localhost:3306/project_management");
+        dataSource.setUsername("your_username");
+        dataSource.setPassword("your_password");
+        return dataSource;
+    }
+
+    public static JdbcTemplate getJdbcTemplate() {
+        return new JdbcTemplate(getDataSource());
+    }
+}
+
+
+
+
+
+>>>>>>>1. Managing Projects
+
+Create Project
+
+
+import org.springframework.web.bind.annotation.*;
+
+import java.sql.Date;
+
+@RestController
+@RequestMapping("/projects")
+public class ProjectController {
+
+    private JdbcTemplate jdbcTemplate = DatabaseConfig.getJdbcTemplate();
+
+    @PostMapping
+    public void createProject(@RequestBody Project project) {
+        String sql = "INSERT INTO projects (project_name, project_description, start_date, end_date, status) VALUES (?, ?, ?, ?, ?)";
+        jdbcTemplate.update(sql, project.getProjectName(), project.getProjectDescription(),
+                Date.valueOf(project.getStartDate()), Date.valueOf(project.getEndDate()), project.getStatus());
+    }
+
+    @GetMapping("/{projectId}")
+    public Project getProject(@PathVariable Long projectId) {
+        String sql = "SELECT * FROM projects WHERE project_id = ?";
+        return jdbcTemplate.queryForObject(sql, new Object[]{projectId}, new ProjectRowMapper());
+    }
+
+    @PutMapping("/{projectId}")
+    public void updateProject(@PathVariable Long projectId, @RequestBody Project project) {
+        String sql = "UPDATE projects SET project_name = ?, project_description = ?, start_date = ?, end_date = ?, status = ? WHERE project_id = ?";
+        jdbcTemplate.update(sql, project.getProjectName(), project.getProjectDescription(),
+                Date.valueOf(project.getStartDate()), Date.valueOf(project.getEndDate()), project.getStatus(), projectId);
+    }
+
+    @DeleteMapping("/{projectId}")
+    public void deleteProject(@PathVariable Long projectId) {
+        String sql = "DELETE FROM projects WHERE project_id = ?";
+        jdbcTemplate.update(sql, projectId);
+    }
+}
+
+
+
+>>>>>>>2. Assigning Tasks
+
+Assign Task to Team
+
+
+@RestController
+@RequestMapping("/tasks")
+public class TaskController {
+
+    private JdbcTemplate jdbcTemplate = DatabaseConfig.getJdbcTemplate();
+
+    @PostMapping("/assign/{taskId}/team/{teamId}")
+    public void assignTaskToTeam(@PathVariable Long taskId, @PathVariable Long teamId) {
+        String sql = "INSERT INTO task_assignments (task_id, team_id) VALUES (?, ?)";
+        jdbcTemplate.update(sql, taskId, teamId);
+    }
+
+    @PostMapping("/assign/{taskId}/user/{userId}")
+    public void assignTaskToUser(@PathVariable Long taskId, @PathVariable Long userId) {
+        String sql = "INSERT INTO task_assignments (task_id, user_id) VALUES (?, ?)";
+        jdbcTemplate.update(sql, taskId, userId);
+    }
+}
+
+
+>>>>>>>>3. Tracking Progress
+
+Record Task Progress
+
+@RestController
+@RequestMapping("/tasks")
+public class TaskController {
+
+    private JdbcTemplate jdbcTemplate = DatabaseConfig.getJdbcTemplate();
+
+    @PostMapping("/{taskId}/progress")
+    public void recordTaskProgress(@PathVariable Long taskId, @RequestBody ProgressUpdate progressUpdate) {
+        String sql = "INSERT INTO task_progress (task_id, progress_date, progress_description, progress_percent) VALUES (?, ?, ?, ?)";
+        jdbcTemplate.update(sql, taskId, Date.valueOf(progressUpdate.getProgressDate()),
+                progressUpdate.getProgressDescription(), progressUpdate.getProgressPercent());
+    }
+}
+
+
+Record Project Progress
+
+@RestController
+@RequestMapping("/projects")
+public class ProjectController {
+
+    private JdbcTemplate jdbcTemplate = DatabaseConfig.getJdbcTemplate();
+
+    @PostMapping("/{projectId}/progress")
+    public void recordProjectProgress(@PathVariable Long projectId, @RequestBody ProgressUpdate progressUpdate) {
+        String sql = "INSERT INTO project_progress (project_id, progress_date, progress_description, progress_percent) VALUES (?, ?, ?, ?)";
+        jdbcTemplate.update(sql, projectId, Date.valueOf(progressUpdate.getProgressDate()),
+                progressUpdate.getProgressDescription(), progressUpdate.getProgressPercent());
+    }
+}
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+[-- **Frontend**: Build a web interface for project managers and team members to collaborate on projects.]
+
+1. HTML Structure (index.html)
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Management System</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>Project Management System</h1>
+    </header>
+    <main>
+        <section id="projectsSection">
+            <h2>Projects</h2>
+            <div id="projectsList">
+                <!-- Project cards will be dynamically added here -->
+            </div>
+            <button id="createProjectBtn">Create New Project</button>
+        </section>
+
+        <section id="tasksSection">
+            <h2>Tasks</h2>
+            <div id="tasksList">
+                <!-- Task cards will be dynamically added here -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal for creating/editing projects -->
+    <div id="projectModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Create/Edit Project</h2>
+            <form id="projectForm">
+                <input type="hidden" id="projectId">
+                <label for="projectName">Project Name:</label>
+                <input type="text" id="projectName" required>
+                <label for="projectDescription">Description:</label>
+                <textarea id="projectDescription" rows="4"></textarea>
+                <label for="startDate">Start Date:</label>
+                <input type="date" id="startDate" required>
+                <label for="endDate">End Date:</label>
+                <input type="date" id="endDate" required>
+                <label for="status">Status:</label>
+                <select id="status">
+                    <option value="active">Active</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                </select>
+                <button type="submit" id="saveProjectBtn">Save Project</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="scripts.js"></script>
+</body>
+</html>
+
+
+2. CSS Styles (styles.css)
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f0f0f0;
+}
+
+header {
+    background-color: #333;
+    color: white;
+    text-align: center;
+    padding: 10px 0;
+}
+
+main {
+    display: flex;
+    justify-content: space-around;
+    padding: 20px;
+}
+
+section {
+    background-color: white;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    padding: 20px;
+    width: 45%;
+}
+
+h2 {
+    margin-bottom: 10px;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 5px;
+}
+
+#projectsList, #tasksList {
+    margin-top: 10px;
+}
+
+#tasksSection {
+    overflow-y: auto;
+    max-height: 500px;
+}
+
+#createProjectBtn {
+    margin-top: 10px;
+    padding: 10px 20px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.4);
+}
+
+.modal-content {
+    background-color: #fefefe;
+    margin: 10% auto;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 50%;
+    border-radius: 5px;
+}
+
+.close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.close:hover,
+.close:focus {
+    color: black;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+
+3. JavaScript for Interaction (scripts.js)
+
+document.addEventListener('DOMContentLoaded', function() {
+    fetchProjects();
+    document.getElementById('createProjectBtn').addEventListener('click', openProjectModal);
+    document.querySelector('.close').addEventListener('click', closeProjectModal);
+    document.getElementById('projectForm').addEventListener('submit', saveProject);
+});
+
+function fetchProjects() {
+    fetch('/projects')
+        .then(response => response.json())
+        .then(projects => {
+            const projectsList = document.getElementById('projectsList');
+            projectsList.innerHTML = '';
+            projects.forEach(project => {
+                const projectCard = document.createElement('div');
+                projectCard.classList.add('project-card');
+                projectCard.innerHTML = `
+                    <h3>${project.projectName}</h3>
+                    <p>${project.projectDescription}</p>
+                    <p>Status: ${project.status}</p>
+                    <p>Start Date: ${project.startDate}</p>
+                    <p>End Date: ${project.endDate}</p>
+                    <button onclick="editProject(${project.projectId})">Edit</button>
+                    <button onclick="deleteProject(${project.projectId})">Delete</button>
+                `;
+                projectsList.appendChild(projectCard);
+            });
+        })
+        .catch(error => console.error('Error fetching projects:', error));
+}
+
+function openProjectModal() {
+    document.getElementById('projectModal').style.display = 'block';
+}
+
+function closeProjectModal() {
+    document.getElementById('projectModal').style.display = 'none';
+}
+
+function saveProject(event) {
+    event.preventDefault();
+    const projectId = document.getElementById('projectId').value;
+    const projectName = document.getElementById('projectName').value;
+    const projectDescription = document.getElementById('projectDescription').value;
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    const status = document.getElementById('status').value;
+
+    let method = 'POST';
+    let url = '/projects';
+
+    if (projectId) {
+        method = 'PUT';
+        url = `/projects/${projectId}`;
+    }
+
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            projectId: projectId,
+            projectName: projectName,
+            projectDescription: projectDescription,
+            startDate: startDate,
+            endDate: endDate,
+            status: status
+        })
+    })
+    .then(response => {
+        if (response.ok) {
+            closeProjectModal();
+            fetchProjects();
+        } else {
+            throw new Error('Failed to save project');
+        }
+    })
+    .catch(error => console.error('Error saving project:', error));
+}
+
+function editProject(projectId) {
+    fetch(`/projects/${projectId}`)
+        .then(response => response.json())
+        .then(project => {
+            document.getElementById('projectId').value = project.projectId;
+            document.getElementById('projectName').value = project.projectName;
+            document.getElementById('projectDescription').value = project.projectDescription;
+            document.getElementById('startDate').value = project.startDate;
+            document.getElementById('endDate').value = project.endDate;
+            document.getElementById('status').value = project.status;
+            openProjectModal();
+        })
+        .catch(error => console.error('Error fetching project for editing:', error));
+}
+
+function deleteProject(projectId) {
+    if (confirm('Are you sure you want to delete this project?')) {
+        fetch(`/projects/${projectId}`, {
+            method: 'DELETE'
+        })
+        .then(response => {
+            if (response.ok) {
+                fetchProjects();
+            } else {
+                throw new Error('Failed to delete project');
+            }
+        })
+        .catch(error => console.error('Error deleting project:', error));
+    }
+}
+
+
+------------------------------------------------------------------------------------------------------------------------------------
+[-- **Functionalities**:
+  - Create, update, delete, and view projects and tasks.
+  - Assign tasks to team members and set deadlines.
+  - Track project progress with Gantt charts or Kanban boards.
+  - Implement notifications and reminders for upcoming deadlines and task updates.]
+
+Implementing all these functionalities comprehensively requires integrating both frontend and backend components.
+Here’s a breakdown of how you can approach each functionality:
+
+1. Create, Update, Delete, and View Projects and Tasks
+
+Frontend: Use HTML forms and JavaScript to interact with backend APIs.
+
+Backend: Implement CRUD operations using JDBC for projects and tasks.
+Example API Endpoints (Backend)
+
+Projects:
+
+GET /projects: Retrieve all projects.
+GET /projects/{id}: Retrieve a specific project.
+POST /projects: Create a new project.
+PUT /projects/{id}: Update an existing project.
+DELETE /projects/{id}: Delete a project.
+
+Tasks:
+
+GET /tasks: Retrieve all tasks.
+GET /tasks/{id}: Retrieve a specific task.
+POST /tasks: Create a new task.
+PUT /tasks/{id}: Update an existing task.
+DELETE /tasks/{id}: Delete a task.
+
+2. Assign Tasks to Team Members and Set Deadlines
+
+Frontend: Enhance task creation/update forms to include team member assignment and deadline fields.
+
+Backend: Extend task endpoints to handle team member assignments and deadlines.
+Example API Endpoints (Enhanced)
+
+Tasks:
+
+POST /tasks: Include fields for assignedTo (team member) and deadline.
+PUT /tasks/{id}: Update assigned team member and deadline.
+
+3. Track Project Progress with Gantt Charts or Kanban Boards
+Frontend: Integrate libraries like Chart.js for Gantt charts or use custom CSS/JavaScript for Kanban boards.
+
+Backend: Implement APIs to fetch data necessary for rendering Gantt charts or Kanban boards.
+Example API Endpoints (Enhanced)
+
+Progress Tracking:
+GET /projects/{id}/tasks: Retrieve tasks associated with a project.
+GET /tasks/{id}/progress: Retrieve task progress/status.
+
+4. Implement Notifications and Reminders
+
+Frontend: Use JavaScript timers or WebSocket connections to receive real-time updates.
+
+Backend: Implement notification services or use email/SMS APIs for reminders.
+Example API Endpoints (Notifications)
+
+Notifications:
+
+POST /notifications: Trigger notifications for upcoming deadlines or task updates.
